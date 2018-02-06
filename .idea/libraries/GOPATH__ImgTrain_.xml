@@ -1,0 +1,58 @@
+<component name="libraryTable">
+  <library name="GOPATH &lt;ImgTrain&gt;">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/config" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/dbOptions" />
+      <root url="file://$PROJECT_DIR$/../EnvTest" />
+      <root url="file://$PROJECT_DIR$/../FileMonitor" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/util" />
+      <root url="file://$PROJECT_DIR$/../TestDir" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgOptions" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgKmeans" />
+      <root url="file://$PROJECT_DIR$/../gopkg.in" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgIndex" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/train" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgCache" />
+      <root url="file://$PROJECT_DIR$/../ImageTestJava" />
+      <root url="file://$PROJECT_DIR$/../ImgDownloader" />
+      <root url="file://$PROJECT_DIR$/../crawl" />
+      <root url="file://$PROJECT_DIR$/../golang.org" />
+      <root url="file://$PROJECT_DIR$/../weixin" />
+      <root url="file://$PROJECT_DIR$/../dirtest" />
+      <root url="file://$PROJECT_DIR$/../github.com" />
+      <root url="file://$PROJECT_DIR$/../sorter" />
+      <root url="file://$PROJECT_DIR$/../Go_Study" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/kmeans" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/config" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/dbOptions" />
+      <root url="file://$PROJECT_DIR$/../EnvTest" />
+      <root url="file://$PROJECT_DIR$/../FileMonitor" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/util" />
+      <root url="file://$PROJECT_DIR$/../TestDir" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgOptions" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgKmeans" />
+      <root url="file://$PROJECT_DIR$/../gopkg.in" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgIndex" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/train" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/imgCache" />
+      <root url="file://$PROJECT_DIR$/../ImageTestJava" />
+      <root url="file://$PROJECT_DIR$/../ImgDownloader" />
+      <root url="file://$PROJECT_DIR$/../crawl" />
+      <root url="file://$PROJECT_DIR$/../golang.org" />
+      <root url="file://$PROJECT_DIR$/../weixin" />
+      <root url="file://$PROJECT_DIR$/../dirtest" />
+      <root url="file://$PROJECT_DIR$/../github.com" />
+      <root url="file://$PROJECT_DIR$/../sorter" />
+      <root url="file://$PROJECT_DIR$/../Go_Study" />
+      <root url="file://$PROJECT_DIR$/../ImgSearch/src/kmeans" />
+    </SOURCES>
+    <excluded>
+      <root url="file://$PROJECT_DIR$" />
+    </excluded>
+  </library>
+</component>

@@ -1,0 +1,35 @@
+
+DirBase=D:/
+
+#2M
+#一个 block 的大小. 一张图片字节数约为 20 K, 一个 block 可以容纳 100 个图片
+BlockSize.bytes=20971520
+
+#128M
+#sst 文件的字节数. 一个 sst 可容纳 64 个 block
+CompactionTableSize.bytes=134217728
+
+#64M
+#leveldb 读时使用的的 block cache. 16 个线程, 每个线程维持两个 block 则为 64M
+BlockCacheCapacity.bytes=67108864
+
+#320M
+#16 个线程则每个线程 20M
+WriteBuffer.bytes=335544320
+
+#L0 到达 4 个文件时触发 compaction. L0 是无序的, 如果此值过大则会造成 L0 文件过多导致查询效率低.
+CompactionL0Trigger.counts=4
+
+#128M
+#第 i 层 sst 文件总大小为: CompactionTotalSize*(10^i): 10 是因子. 即 i+1 层是 i 层的文件个数/大小 的 10 倍.
+#按下面的配置则 Li 大小是 128M*10 = 1280M. 即第 i 层有 10*i 个文件
+CompactionTotalSize.bytes=134217728
+
+#400M
+#L0 层文件总大小达到此阈值则暂停写入, 等待 mem 转化为 imm, 如果有需要 imm 会 compaction
+#此值的设定要参考写入的速度:
+WriteL0PauseTrigger.bytes=419430400
+
+#320M
+#L0 文件到达此大小减缓写入速度
+WriteL0SlowdownTrigger.bytes=335544320
