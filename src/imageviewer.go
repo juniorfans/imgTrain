@@ -24,19 +24,30 @@ import (
 	"os"
 	"config"
 	"github.com/lxn/win"
+	"strings"
 )
 
 func main() {
+
+	points := config.GetClipConfigById(0).GetClipsLeftTop()
+	fmt.Println("leftTopPoints: ", points)
+
 	mw := new(MyMainWindow)
 	mw.waitForStart = make(chan bool, 1)
 	mw.waitForDBVisitor = make(chan bool, 1)
+	mw.imgHeight = 600
+	mw.imgWidth = 600
+	mw.wndWidth = 1600
+	mw.wndHeight = 900
+	mw.pickedWhich = make(map[uint8]int)
+	mw.model = NewEnvModel()
 
-	go waitAndVisitDB(mw)
+	go asyncVisitDB(mw)
 
-	RunWndThread(mw)
+	windowsCreateAndRun(mw)
 }
 
-func RunWndThread(mw *MyMainWindow){
+func windowsCreateAndRun(mw *MyMainWindow){
 	stdin := bufio.NewReader(os.Stdin)
 
 	var dbIdStr string
@@ -52,15 +63,19 @@ func RunWndThread(mw *MyMainWindow){
 		Title:    "Train Img",
 		MenuItems: []MenuItem{
 			Menu{
-				Text: "&File",
+				Text: "&Start",
 				Items: []MenuItem{
 					Action{
 						AssignTo:    &openAction,
-						Text:        "&Show",
+						Text:        "&Start",
 						Image:       "../img/open.png",
 						OnTriggered: mw.openAction_Triggered,
 					},
-					Separator{},
+				},
+			},
+			Menu{
+				Text: "&Exit",
+				Items: []MenuItem{
 					Action{
 						Text:        "Exit",
 						OnTriggered: func() { mw.Close() },
@@ -77,46 +92,43 @@ func RunWndThread(mw *MyMainWindow){
 				},
 			},
 		},
-		ToolBarItems: []MenuItem{
-			ActionRef{&openAction},
-		},
-		MinSize: Size{800, 600},
-		Size:    Size{1200, 900},
-		Layout:  VBox{MarginsZero: true},
+		MinSize: Size{mw.wndWidth, mw.wndHeight},
+		Size:    Size{mw.wndWidth, mw.wndHeight},
+		Layout:  HBox{MarginsZero: true},
 		Children: []Widget{
-
-			ImageView{
-				AssignTo: &mw.imageViewer,
-				MaxSize: Size{800, 600},
-				MinSize: Size{800, 600},
-				OnMouseUp: mw.UserTrain,
-				OnMouseMove: mw.TestMourseMove,
+			ListBox{
+				AssignTo: &mw.listBox,
+				Model:    mw.model,
+				OnCurrentIndexChanged: mw.lb_CurrentIndexChanged,
+				OnItemActivated:       mw.lb_ItemActivated,
 			},
-			TabWidget{
-				AssignTo: &mw.tabWidget,
-				MaxSize: Size{800, 600},
-				MinSize: Size{800, 600},
-				OnMouseUp: mw.UserTrain,
-				OnMouseMove: mw.TestMourseMove,
-			},
-
 			TextEdit{
 				AssignTo: &mw.textEditor,
 				ReadOnly: true,
 				Text:     fmt.Sprintf(""),
 				HScroll: 	true,
 				VScroll: true,
+				MinSize:Size{600,300},
+				MaxSize:Size{600,300},
+				Font:Font{PointSize:14},
+				OnMouseDown:func(x,y int, button walk.MouseButton){
+					//fmt.Println("textedit mouse down: ", int(button))
+				},
 			},
 		},
-
-		OnMouseUp: mw.UserTrain,
-		OnMouseDown: mw.TestMourseDown,
-
 	}.Create()); err != nil {
 		log.Fatal(err)
 	}
 
 	walk.InitWrapperWindow(mw)
+
+	if myImgViewer, err := NewMyImgViewer(mw); nil != err{
+		log.Fatal(err)
+	}else{
+		myImgViewer.SetName("image viewer")
+		mw.imageViewer = myImgViewer
+	}
+
 	mw.Run()
 }
 
@@ -131,9 +143,10 @@ type DrawInfo struct {
 
 type MyMainWindow struct {
 	*walk.MainWindow
-	tabWidget        *walk.TabWidget
-	imageViewer	 *walk.ImageView
+	imageViewer	 *MyImgViewer
 	textEditor       *walk.TextEdit
+	listBox		*walk.ListBox
+	model 		*EnvModel
 	prevFilePath     string
 
 	trainDBId        uint8
@@ -142,8 +155,15 @@ type MyMainWindow struct {
 
 	toDraw           DrawInfo
 
+	//------------ const
+	wndHeight	int
+	wndWidth	int
+	imgHeight	int
+	imgWidth	int
+
 	//------------
-	cliked           []Point
+	//cliked           []Point
+	pickedWhich	map[uint8]int
 }
 
 
@@ -151,7 +171,6 @@ const WM_MY_MSG = 1025
 func (mw *MyMainWindow) WndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
 	switch msg {
 	case WM_MY_MSG:
-		mw.addTrainInfo("to draw")
 		mw.drawInMainThread()
 	}
 
@@ -159,58 +178,86 @@ func (mw *MyMainWindow) WndProc(hwnd win.HWND, msg uint32, wParam, lParam uintpt
 }
 
 
-
-
 func (this *MyMainWindow) TestMourseDown(x, y int, button walk.MouseButton)  {
-	this.addTrainInfo("mouse down")
+
 }
 func (this *MyMainWindow) TestMourseMove(x, y int, button walk.MouseButton)  {
 	//this.addTrainInfo("mouse move")
 }
 
 //界面线程
-func (this *MyMainWindow) UserTrain(x, y int, button walk.MouseButton)  {
+func (this *MyMainWindow) onImgClickedEvent(x, y int, button walk.MouseButton)  {
 
-	var whichMouse string
-	switch button {
-	case walk.LeftButton:
-		whichMouse = "left"
-		break;
-	case walk.RightButton:
-		whichMouse = "right"
-		break;
-	case walk.MiddleButton:
-		whichMouse = "middle"
-		break;
-	default:
-		whichMouse = "unknow mourse"
-		break;
-	}
+	imgIdent := this.toDraw.imgIdent
+	dbIdStr := strconv.Itoa(int(imgIdent[0]))
+	imgKeyStr := string(ImgIndex.ParseImgKeyToPlainTxt(imgIdent[1:]))
+	imgName := dbIdStr + "_" + imgKeyStr
 
-	userSay := "user train, " + whichMouse +  ", x: " + strconv.Itoa(x) + ", y: " + strconv.Itoa(y)
-	fmt.Println(userSay)
-	this.addTrainInfo(userSay)
-	//end for train
+	//confire
 	if button == walk.RightButton{
-		this.cliked = nil
-		this.addTrainInfo("finihsed trained")
+		if 0 == len(this.pickedWhich){
+			//this.appendToTextEditor("abort ---- \r\n")
+			return
+		}
+
+		this.appendToTextEditor("\r\nconfirmed:  [" + imgName + "]: ")
+
+		for which,_ := range this.pickedWhich{
+			this.appendToTextEditor(strconv.Itoa(int(which)) + " ")
+
+			//to save result
+		}
+
+		this.pickedWhich = make(map[uint8]int)
 		//继续读取数据库
 		this.waitForDBVisitor <- true
+	}else if button == walk.LeftButton{
+		which := this.whichClip(x, y)
+		if 255==which{
+			//invalid pick
+			return
+		}
+		this.pickedWhich[which]=1
+		this.appendToTextEditor(strconv.Itoa(int(which)) + " ")
+	}else if button == walk.MiddleButton{
+		//remove
+		noneConfirm := this.whichClip(x, y)
+		if 255==noneConfirm{
+			//invalid pick
+			return
+		}
+		delete(this.pickedWhich, noneConfirm)
+		this.appendToTextEditor("\r\nconfirming: [" + imgName + "]: ")
+
+		for w, _ := range this.pickedWhich{
+			if w!=noneConfirm{
+				this.appendToTextEditor(strconv.Itoa(int(w)) + " ")
+			}
+		}
+
 	}else{
-		//training
-		click := Point{x:x,y:y}
-		this.cliked = append(this.cliked, click)
+
 	}
 }
 
-func (this *MyMainWindow) addTrainInfo(text string)  {
-	exsits := this.textEditor.Text()
+func (this *MyMainWindow)whichClip(x, y int) uint8 {
+	clipConfig := config.GetClipConfigById(0)
+	toClipX := x * clipConfig.BigPicWidth / this.imgWidth
+	toclipY := y * clipConfig.BigPicHeight / this.imgHeight
+	return clipConfig.WhichClip(toClipX, toclipY)
+}
+
+func (this *MyMainWindow) appendToTextEditor(text string)  {
+	/*exsits := this.textEditor.Text()
 	exsits += "\r\n" + text
 	this.textEditor.SetText(exsits)
+	*/
+	//自动滚动到最下面
+	this.textEditor.AppendText(text)
 }
 
 
-func waitAndVisitDB(this *MyMainWindow)  {
+func asyncVisitDB(this *MyMainWindow)  {
 	//wait for start
 	if ! <- this.waitForStart{
 		return
@@ -240,8 +287,6 @@ func waitAndVisitDB(this *MyMainWindow)  {
 			<- this.waitForDBVisitor
 		}
 
-
-
 		iter.Next()
 	}
 }
@@ -253,7 +298,8 @@ func (this *MyMainWindow) drawInMainThread()  {
 
 	this.drawImage(drawInfo.imgData, imgName)
 
-	this.addTrainInfo("wait for user train")
+	this.appendToTextEditor("\r\n----------------------------\r\n")
+	this.appendToTextEditor("confirming: [" + imgName + "]: ")
 }
 
 func (mw *MyMainWindow) drawImage(imgData []byte, title string) error {
@@ -280,48 +326,9 @@ func (mw *MyMainWindow) drawImage(imgData []byte, title string) error {
 		}
 	}()
 
-	page, err := walk.NewTabPage()
-	if err != nil {
-		return err
-	}
 
-	if page.SetTitle(title); err != nil {
-		return err
-	}
-	page.SetLayout(walk.NewHBoxLayout())
-	page.MouseDown()
-
-	defer func() {
-		if !succeeded {
-			page.Dispose()
-		}
-	}()
-
-	imageView, err := walk.NewImageView(page)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if !succeeded {
-			imageView.Dispose()
-		}
-	}()
-
-	imageView.SetEnabled(true)
-	if err := imageView.SetImage(walkImage); err != nil {
-		return err
-	}
-
-	if mw.tabWidget.Pages().Len() > 8{
-		mw.tabWidget.Pages().RemoveAt(0)
-	}
-
-	if err := mw.tabWidget.Pages().Add(page); err != nil {
-		return err
-	}
-
-	if err := mw.tabWidget.SetCurrentIndex(mw.tabWidget.Pages().Len() - 1); err != nil {
+	mw.imageViewer.SetEnabled(true)
+	if err := mw.imageViewer.SetImage(walkImage); err != nil {
 		return err
 	}
 
@@ -334,9 +341,114 @@ func (mw *MyMainWindow) drawImage(imgData []byte, title string) error {
 
 func (this *MyMainWindow) openAction_Triggered() {
 	this.waitForStart <- true
-	this.addTrainInfo("gui set to start")
 }
 
 func (mw *MyMainWindow) aboutAction_Triggered() {
 	walk.MsgBox(mw, "About", "Walk Image Viewer Example", walk.MsgBoxIconInformation)
+}
+
+
+
+type MyImgViewer struct {
+	*walk.ImageView
+}
+
+
+func NewMyImgViewer(parent *MyMainWindow) (*MyImgViewer, error) {
+	imgView, err := walk.NewImageView(parent)
+	if nil != err{
+		return nil, err
+	}
+	myImgView := &MyImgViewer{imgView}
+
+	//这里有坑: 如果调用下面这一行, 则 MyImgViewer 的 wndProc 函数才会被注册.
+	//而如果调用则会造成重复调用: NewImageView 中已经调用过. 这会造成控件被破坏, 显示不了图片
+
+	// InitWrapperWindow has been called in walk.NewImageView(parent)
+	// if call again, imgView can not dispaly images(i guess init again course this)
+	// but if not call this line, MyImgViewer.WndProc will not work(i guess the event have not been registered)
+	//walk.InitWrapperWindow(myImgView)
+
+	imgView.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
+		parent.onImgClickedEvent(x,y, button)
+	})
+
+	return myImgView, nil
+}
+
+func (*MyImgViewer) MinSizeHint() walk.Size {
+	return walk.Size{800, 600}
+}
+func (*MyImgViewer) MaxSizeHint() walk.Size {
+	return walk.Size{800, 600}
+}
+
+func (this *MyImgViewer)WndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
+	switch msg {
+	case win.WM_LBUTTONDOWN:
+		log.Printf("WM_LBUTTONDOWN")
+		break
+	case win.WM_RBUTTONDOWN:
+		log.Printf("WM_RBUTTONDOWN")
+		break
+	case win.WM_MBUTTONDOWN:
+		log.Printf("WM_MBUTTONDOWN")
+		break
+	}
+
+	return this.WindowBase.WndProc(hwnd, msg, wParam, lParam)
+}
+
+
+func (mw *MyMainWindow) lb_CurrentIndexChanged() {
+	i := mw.listBox.CurrentIndex()
+	item := &mw.model.items[i]
+
+//	mw.te.SetText(item.value)
+
+	fmt.Println("CurrentIndex: ", i)
+	fmt.Println("CurrentEnvVarName: ", item.name)
+}
+
+func (mw *MyMainWindow) lb_ItemActivated() {
+	value := mw.model.items[mw.listBox.CurrentIndex()].value
+
+	walk.MsgBox(mw, "Value", value, walk.MsgBoxIconInformation)
+}
+
+type EnvItem struct {
+	name  string
+	value string
+}
+type EnvModel struct {
+	walk.ListModelBase
+	items []EnvItem
+}
+
+func NewEnvModel() *EnvModel {
+	env := os.Environ()
+
+	m := &EnvModel{items: make([]EnvItem, len(env))}
+
+	for i, e := range env {
+		j := strings.Index(e, "=")
+		if j == 0 {
+			continue
+		}
+
+		name := e[0:j]
+		value := strings.Replace(e[j+1:], ";", "\r\n", -1)
+
+		m.items[i] = EnvItem{name, value}
+	}
+
+	return m
+}
+
+func (m *EnvModel) ItemCount() int {
+	return len(m.items)
+}
+
+func (m *EnvModel) Value(index int) interface{} {
+	return m.items[index].name
 }
