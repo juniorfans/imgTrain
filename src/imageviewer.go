@@ -24,7 +24,10 @@ import (
 	"os"
 	"config"
 	"github.com/lxn/win"
+	"imgCache"
+	"util"
 	"strings"
+	"sort"
 )
 
 func main() {
@@ -37,10 +40,12 @@ func main() {
 	mw.waitForDBVisitor = make(chan bool, 1)
 	mw.imgHeight = 600
 	mw.imgWidth = 600
-	mw.wndWidth = 1600
+	mw.wndWidth = 1200
 	mw.wndHeight = 900
 	mw.pickedWhich = make(map[uint8]int)
+	mw.trainResult = imgCache.NewMyMap(false)
 	mw.model = NewEnvModel()
+	mw.toDrawAgain = nil
 
 	go asyncVisitDB(mw)
 
@@ -93,27 +98,81 @@ func windowsCreateAndRun(mw *MyMainWindow){
 			},
 		},
 		MinSize: Size{mw.wndWidth, mw.wndHeight},
+		MaxSize: Size{mw.wndWidth, mw.wndHeight},
 		Size:    Size{mw.wndWidth, mw.wndHeight},
-		Layout:  HBox{MarginsZero: true},
+		Layout:  HBox{},
 		Children: []Widget{
-			ListBox{
-				AssignTo: &mw.listBox,
-				Model:    mw.model,
-				OnCurrentIndexChanged: mw.lb_CurrentIndexChanged,
-				OnItemActivated:       mw.lb_ItemActivated,
+			Composite{
+				Layout:VBox{},
+				Children: []Widget{
+					ListBox{
+						Font:Font{PointSize:14},
+						AssignTo: &mw.listBox,
+						MinSize:Size{400,300},
+						MaxSize:Size{400,300},
+					//	OnCurrentIndexChanged: mw.lb_CurrentIndexChanged,
+						OnSelectedIndexesChanged:mw.lb_SelectedChanged,
+					},
+					PushButton{
+						AssignTo: &mw.imgPreViewer,
+						MinSize:Size{400,400},
+						MaxSize:Size{400,400},
+						AlwaysConsumeSpace:true,
+
+					},
+
+					Label{
+						MinSize:Size{400,60},
+						MaxSize:Size{400,60},
+						Text: "-----------------------------",
+					},
+					TextEdit{
+						AssignTo: &mw.listTestEditor,
+						ReadOnly: true,
+						Text:     fmt.Sprintf(""),
+						HScroll: false,
+						VScroll: false,
+						MinSize:Size{400,40},
+						MaxSize:Size{400,40},
+						Font:Font{PointSize:14},
+					},
+					PushButton{
+						AssignTo:&mw.doAgainButton,
+						Text:"Again",
+						MinSize:Size{400,100},
+						MaxSize:Size{400,100},
+						Visible:true,
+						OnMouseUp: func(x, y int, button walk.MouseButton){
+							item := mw.GetCurrentListBoxItemData()
+							imgIdent := GetImgIdentFromImgName(item.name)
+							mw.toDrawAgain = &DrawInfo{imgIdent:imgIdent, imgData:item.data}
+							//清除信息
+							mw.pickedWhich = make(map[uint8]int)
+							mw.TrainAgain()
+						},
+					},
+				},
 			},
+
 			TextEdit{
 				AssignTo: &mw.textEditor,
 				ReadOnly: true,
 				Text:     fmt.Sprintf(""),
 				HScroll: 	true,
 				VScroll: true,
-				MinSize:Size{600,300},
-				MaxSize:Size{600,300},
+				MinSize:Size{400,900},
+				MaxSize:Size{400,900},
 				Font:Font{PointSize:14},
 				OnMouseDown:func(x,y int, button walk.MouseButton){
 					//fmt.Println("textedit mouse down: ", int(button))
 				},
+			},
+			ImageView{
+				AssignTo: &mw.imageViewer,
+				MinSize:Size{600,800},
+				MaxSize:Size{600,800},
+				AlwaysConsumeSpace:true,
+
 			},
 		},
 	}.Create()); err != nil {
@@ -122,14 +181,38 @@ func windowsCreateAndRun(mw *MyMainWindow){
 
 	walk.InitWrapperWindow(mw)
 
+	mw.imageViewer.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
+		mw.onImgClickedEvent(x,y, button)
+	})
+/*
 	if myImgViewer, err := NewMyImgViewer(mw); nil != err{
 		log.Fatal(err)
 	}else{
 		myImgViewer.SetName("image viewer")
 		mw.imageViewer = myImgViewer
 	}
-
+*/
 	mw.Run()
+}
+
+func (this *MyMainWindow) TrainAgain()  {
+	if nil == this.toDrawAgain{
+		return
+	}
+	imgIdent := this.toDrawAgain.imgIdent
+
+	imgData := this.toDrawAgain.imgData //dbOptions.PickImgDB(dbId).ReadFor(imgKey)
+	if 0 == len(imgData){
+		walk.MsgBox(this, "Value", "重做失败, 查询图片数据失败", walk.MsgBoxIconInformation)
+		return
+	}
+
+	imgName := GetImgNamgeFromImgIdent(imgIdent)
+
+	drawImage(this.imageViewer, this.imgWidth, this.imgHeight, imgData, imgName)
+
+	this.appendToTextEditor("\r\n----------------------------\r\n")
+	this.appendToTextEditor("confirming: [" + imgName + "]: ")
 }
 
 type Point struct {
@@ -143,11 +226,14 @@ type DrawInfo struct {
 
 type MyMainWindow struct {
 	*walk.MainWindow
-	imageViewer	 *MyImgViewer
+	//imageViewer	 *MyImgViewer
+	imageViewer	 *walk.ImageView
 	textEditor       *walk.TextEdit
 	listBox		*walk.ListBox
-	model 		*EnvModel
-	prevFilePath     string
+	imgPreViewer	 *walk.PushButton
+	model *EnvModel
+	listTestEditor  *walk.TextEdit
+	doAgainButton  *walk.PushButton
 
 	trainDBId        uint8
 	waitForStart     chan bool
@@ -163,7 +249,9 @@ type MyMainWindow struct {
 
 	//------------
 	//cliked           []Point
+	toDrawAgain	*DrawInfo
 	pickedWhich	map[uint8]int
+	trainResult	*imgCache.MyMap
 }
 
 
@@ -188,7 +276,13 @@ func (this *MyMainWindow) TestMourseMove(x, y int, button walk.MouseButton)  {
 //界面线程
 func (this *MyMainWindow) onImgClickedEvent(x, y int, button walk.MouseButton)  {
 
-	imgIdent := this.toDraw.imgIdent
+	var imgIdent []byte
+	if nil != this.toDrawAgain{
+		imgIdent = this.toDrawAgain.imgIdent
+	}else{
+		imgIdent = this.toDraw.imgIdent
+	}
+
 	dbIdStr := strconv.Itoa(int(imgIdent[0]))
 	imgKeyStr := string(ImgIndex.ParseImgKeyToPlainTxt(imgIdent[1:]))
 	imgName := dbIdStr + "_" + imgKeyStr
@@ -202,15 +296,29 @@ func (this *MyMainWindow) onImgClickedEvent(x, y int, button walk.MouseButton)  
 
 		this.appendToTextEditor("\r\nconfirmed:  [" + imgName + "]: ")
 
+		ans := make([]uint8, len(this.pickedWhich))
+		ci := 0
 		for which,_ := range this.pickedWhich{
 			this.appendToTextEditor(strconv.Itoa(int(which)) + " ")
-
+			ans[ci] = which
+			ci ++
 			//to save result
 		}
+		this.trainResult.Put(imgIdent, ans)
 
+		this.ReInitListBox()
 		this.pickedWhich = make(map[uint8]int)
-		//继续读取数据库
-		this.waitForDBVisitor <- true
+
+		//当有重做的任务正在进行, 需要把当前做完后才做已经缓存起来的任务
+		if this.toDrawAgain == nil{
+			//继续读取数据库
+			this.waitForDBVisitor <- true
+		}else{
+			//继续把原有任务做完
+			this.toDrawAgain = nil
+			this.drawInMainThread()
+		}
+
 	}else if button == walk.LeftButton{
 		which := this.whichClip(x, y)
 		if 255==which{
@@ -239,6 +347,8 @@ func (this *MyMainWindow) onImgClickedEvent(x, y int, button walk.MouseButton)  
 
 	}
 }
+
+
 
 func (this *MyMainWindow)whichClip(x, y int) uint8 {
 	clipConfig := config.GetClipConfigById(0)
@@ -277,8 +387,8 @@ func asyncVisitDB(this *MyMainWindow)  {
 	for iter.Valid(){
 		if config.IsValidUserDBKey(iter.Key()){
 			copy(imgIdent[1:], iter.Key())
-			this.toDraw.imgIdent = imgIdent
-			this.toDraw.imgData = iter.Value()
+			this.toDraw.imgIdent = fileUtil.CopyBytesTo(imgIdent)
+			this.toDraw.imgData = fileUtil.CopyBytesTo(iter.Value())
 
 			//通知 UI 线程进行 draw
 			fmt.Println("to notify GUI to draw")
@@ -296,20 +406,20 @@ func (this *MyMainWindow) drawInMainThread()  {
 
 	imgName := strconv.Itoa(int(drawInfo.imgIdent[0])) + "_" + string(ImgIndex.ParseImgKeyToPlainTxt(drawInfo.imgIdent[1:]))
 
-	this.drawImage(drawInfo.imgData, imgName)
+	drawImage(this.imageViewer, this.imgWidth, this.imgHeight, drawInfo.imgData, imgName)
 
 	this.appendToTextEditor("\r\n----------------------------\r\n")
 	this.appendToTextEditor("confirming: [" + imgName + "]: ")
 }
 
-func (mw *MyMainWindow) drawImage(imgData []byte, title string) error {
+func drawImage(imgViewer * walk.ImageView, width, height int, imgData []byte, title string) error {
 	var reader io.Reader = bytes.NewReader(imgData)
 	img, err := jpeg.Decode(reader)
 	if err != nil {
 		return err
 	}
 
-	dst := image.NewRGBA(image.Rect(0, 0, 600,600))
+	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 	if nil != graphics.Scale(dst, img){
 		return err
 	}
@@ -327,8 +437,8 @@ func (mw *MyMainWindow) drawImage(imgData []byte, title string) error {
 	}()
 
 
-	mw.imageViewer.SetEnabled(true)
-	if err := mw.imageViewer.SetImage(walkImage); err != nil {
+	imgViewer.SetEnabled(true)
+	if err := imgViewer.SetImage(walkImage); err != nil {
 		return err
 	}
 
@@ -399,48 +509,106 @@ func (this *MyImgViewer)WndProc(hwnd win.HWND, msg uint32, wParam, lParam uintpt
 	return this.WindowBase.WndProc(hwnd, msg, wParam, lParam)
 }
 
-
-func (mw *MyMainWindow) lb_CurrentIndexChanged() {
+func (mw *MyMainWindow) GetCurrentListBoxItemData() *EnvItem {
 	i := mw.listBox.CurrentIndex()
-	item := &mw.model.items[i]
-
-//	mw.te.SetText(item.value)
-
-	fmt.Println("CurrentIndex: ", i)
-	fmt.Println("CurrentEnvVarName: ", item.name)
+	if i < 0 || i >= len(mw.model.items){
+		return nil
+	}
+	return &mw.model.items[i]
 }
 
-func (mw *MyMainWindow) lb_ItemActivated() {
-	value := mw.model.items[mw.listBox.CurrentIndex()].value
+func (mw *MyMainWindow) lb_SelectedChanged() {
+	i := mw.listBox.CurrentIndex()
+	if i < 0 || i >= len(mw.model.items){
+		return
+	}
+	fmt.Println("current index: ", i, ", items length: ", len(mw.model.items))
+	item := &mw.model.items[i]
+	mw.doAgainButton.SetText("重做: " + item.name)
+	mw.doAgainButton.SetName(item.name)
+	mw.listTestEditor.SetText(item.value)
 
-	walk.MsgBox(mw, "Value", value, walk.MsgBoxIconInformation)
+	if 0 == len(item.data){
+		imgIdent := GetImgIdentFromImgName(item.name)
+		imgData := dbOptions.PickImgDB(uint8(imgIdent[0])).ReadFor(imgIdent[1:])
+		if nil == imgData{
+			walk.MsgBox(mw, "Value", "查询图片数据失败", walk.MsgBoxIconInformation)
+		}
+		item.data = imgData
+	}
+
+	var reader io.Reader = bytes.NewReader(item.data)
+	img, err := jpeg.Decode(reader)
+	if err != nil {
+		return
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, 300, 300))
+	if nil != graphics.Scale(dst, img){
+		return
+	}
+
+	walkImage, err := walk.NewBitmapFromImage(dst);
+
+	mw.imgPreViewer.SetImage(walkImage)
+	mw.imgPreViewer.SetEnabled(true)
+}
+
+
+func (this *MyMainWindow) ReInitListBox()  {
+	res := this.trainResult
+	keys := res.KeySet()
+
+	this.model.items = make([]EnvItem, len(keys))
+
+	index := 0
+	for _,key := range keys{
+		values := res.Get(key)
+		if 0 == len(values){
+			continue
+		}
+		whiches := values[0].([]uint8)
+		imgName := strconv.Itoa(int(key[0]))+"_"+string(ImgIndex.ParseImgKeyToPlainTxt(key[1:]))
+		whichStr := ""
+		for _,which := range whiches{
+			whichStr += strconv.Itoa(int(which))
+		}
+		this.model.items[index] = EnvItem{imgName, whichStr, nil}
+		index ++
+	}
+
+	sort.Sort(envItemList(this.model.items))
+	this.listBox.SetModel(this.model)
 }
 
 type EnvItem struct {
 	name  string
 	value string
+	data []byte
 }
+
+func (this envItemList)Len() int {
+	return len(this)
+}
+
+func (this envItemList) Swap(i, j int) {
+	this[i], this[j] = this[j], this[i]
+}
+
+func (this envItemList) Less(i, j int) bool {
+	return strings.Compare(this[i].name,this[j].name) < 0
+}
+
+
+type envItemList []EnvItem
 type EnvModel struct {
 	walk.ListModelBase
 	items []EnvItem
 }
 
 func NewEnvModel() *EnvModel {
-	env := os.Environ()
 
-	m := &EnvModel{items: make([]EnvItem, len(env))}
-
-	for i, e := range env {
-		j := strings.Index(e, "=")
-		if j == 0 {
-			continue
-		}
-
-		name := e[0:j]
-		value := strings.Replace(e[j+1:], ";", "\r\n", -1)
-
-		m.items[i] = EnvItem{name, value}
-	}
+	m := &EnvModel{items: nil}
 
 	return m
 }
@@ -451,4 +619,19 @@ func (m *EnvModel) ItemCount() int {
 
 func (m *EnvModel) Value(index int) interface{} {
 	return m.items[index].name
+}
+
+func GetImgNamgeFromImgIdent (imgIdent []byte) string {
+	return strconv.Itoa(int(imgIdent[0])) + "_" + string(ImgIndex.ParseImgKeyToPlainTxt(imgIdent[1:]))
+}
+
+func GetImgIdentFromImgName(imgName string) []byte {
+	res := strings.Split(imgName, "_")
+	ret := make([]byte, ImgIndex.IMG_IDENT_LENGTH)
+	dbId, _ := strconv.Atoi(res[0])
+	imgKey := ImgIndex.FormatImgKey([]byte(res[1]))
+	ret[0] = byte(dbId)
+	copy(ret[1:], imgKey)
+	return ret
+
 }
