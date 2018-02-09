@@ -1,0 +1,8 @@
+#方差距离
+Delta_sd=5.0
+
+#平均值距离
+Delta_mean=5.0
+
+#欧拉距离
+Delta_Eul=5.0
