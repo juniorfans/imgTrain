@@ -43,13 +43,13 @@ func main() {
 	mw.wndWidth = 1366
 	mw.wndHeight = 768
 	mw.pickedWhiches = make(map[uint8]int)
-	mw.pickedTagIndex = nil
+	mw.pickedTagName = nil
 	mw.trainResult = imgCache.NewMyMap(false)
 	mw.model = NewNameValueModel()
 	mw.toDrawAgain = nil
 	mw.waitToFlushTagComobobox = make(chan bool, 1)
 	mw.tagComboboxClocker = nil
-
+	mw.reloadTagInfos()
 
 	go asyncVisitDB(mw)
 
@@ -133,7 +133,7 @@ func windowsCreateAndRun(mw *MyMainWindow){
 							mw.toDrawAgain = &DrawInfo{imgIdent:item.imgIdent, imgData:item.imgData}
 							//清除信息
 							mw.pickedWhiches = make(map[uint8]int)
-							mw.pickedTagIndex = nil
+							mw.pickedTagName = nil
 							mw.TrainAgain()
 						},
 					},
@@ -158,6 +158,7 @@ func windowsCreateAndRun(mw *MyMainWindow){
 				},
 			},
 
+			//以下 Composite 366 * 768
 			Composite{
 				Layout:VBox{MarginsZero:true},
 				Children: []Widget{
@@ -171,43 +172,88 @@ func windowsCreateAndRun(mw *MyMainWindow){
 						AssignTo:&mw.tagBombobox,
 						MinSize:Size{366,400},
 						MaxSize:Size{366,400},
+						Font:Font{PointSize:14},
 						Editable: true,
 						OnKeyUp: mw.tagComboboxKeyUp ,
 
 					},
+
+					//占位符 -- 428
 					Label{
-						MinSize:Size{366,22},
-						MaxSize:Size{366,22},
+						MinSize:Size{366,180},
+						MaxSize:Size{366,180},
 						Font:Font{PointSize:14},
-						Text: "录入一个主题",
+
 					},
+
+					PushButton{
+						//AssignTo:&mw.,
+						Text:"确认当前图片主题",
+						MinSize:Size{366,90},
+						MaxSize:Size{366,90},
+						Visible:true,
+						OnMouseUp: func(x, y int, button walk.MouseButton){
+							input := mw.tagBombobox.Text()
+							if 0 == len(input){
+								return
+							}
+							mw.pickedTagName = []byte(input)
+						},
+					},
+
+					Label{
+						MinSize:Size{366,30},
+						MaxSize:Size{366,30},
+						Font:Font{PointSize:14},
+						Text: "录入一个主题--------------------------",
+					},
+					//以下 Composite 366 * 40
 					Composite{
-						Layout: Grid{Columns: 2},
+						Layout:HBox{MarginsZero:true},
 						Children: []Widget{
 							TextEdit{
 								AssignTo: &mw.newTagTextEditor,
 								ReadOnly: false,
 								Text:     fmt.Sprintf(""),
-								MinSize:Size{200,100},
-								MaxSize:Size{200,100},
+								MinSize:Size{200,40},
+								MaxSize:Size{200,40},	//--80
 								Font:Font{PointSize:14},
 								OnMouseDown:func(x,y int, button walk.MouseButton){
 									//fmt.Println("textedit mouse down: ", int(button))
 								},
 							},
+
+							Label{
+								MinSize:Size{100,40},
+								MaxSize:Size{100,40},
+								Font:Font{PointSize:14},
+								Text: "  --------->  ",
+							},
 							PushButton{
 								//AssignTo:&mw.,
 								Text:"提交",
-								MinSize:Size{200,100},
-								MaxSize:Size{200,100},
+								MinSize:Size{66,40},
+								MaxSize:Size{66,40},
 								Visible:true,
 								OnMouseUp: func(x, y int, button walk.MouseButton){
 									inputTagName := mw.newTagTextEditor.Text()
+									if 0 == len(inputTagName){
+										return
+									}
+									if nil != mw.cachedTotalTagInfoList {
+										if mw.cachedTotalTagInfoList.IsTagExsits([]byte(inputTagName)){
+											walk.MsgBox(mw, "Value", "tag 已存在: " + inputTagName, walk.MsgBoxIconInformation)
+											return
+										}
+									}
+
 									err := dbOptions.WriteATag([]byte(inputTagName))
 									if nil != err{
 										walk.MsgBox(mw, "Value", "写入 tag 错误: " + err.Error(), walk.MsgBoxIconInformation)
 									}else{
 										walk.MsgBox(mw, "Value", "写入 tag 成功: " + inputTagName, walk.MsgBoxIconInformation)
+										mw.reloadTagInfos()
+										mw.ReInitTagCombobox(mw.cachedTotalTagInfoList)
 									}
 								},
 							},
@@ -231,7 +277,7 @@ func windowsCreateAndRun(mw *MyMainWindow){
 							}
 							//清除信息
 							mw.pickedWhiches = make(map[uint8]int)
-							mw.pickedTagIndex = nil
+							mw.pickedTagName = nil
 							//跳过当前
 							mw.waitForDBVisitor <- true
 						},
@@ -273,9 +319,14 @@ func windowsCreateAndRun(mw *MyMainWindow){
 	mw.hasStarted = true
 	mw.waitForStart <- mw.hasStarted
 
-	mw.ReInitTagCombobox(nil)
+	mw.ReInitTagCombobox(mw.cachedTotalTagInfoList)
 
 	mw.Run()
+}
+
+func (this *MyMainWindow) reloadTagInfos()  {
+	this.cachedTotalTagInfoList = dbOptions.GetAllTagInfos()
+	this.cachedTotalTagInfoList.Print()
 }
 
 func autoFlushTagCombox(this* MyMainWindow)  {
@@ -284,26 +335,30 @@ func autoFlushTagCombox(this* MyMainWindow)  {
 	for{
 		<- this.tagComboboxClocker.C	//等待计时到达
 
-		inputTagName := this.tagBombobox.Text()
-	//	walk.MsgBox(this, "Value", "输入: " + inputTagName, walk.MsgBoxIconInformation)
-		this.ReInitTagCombobox([]byte(inputTagName))
+		input := this.tagBombobox.Text()
+		editInput := trimLRSpace([]byte(input))
+		if 0 == len(editInput){
+			this.ReInitTagCombobox(this.cachedTotalTagInfoList)
+		}else{
+			fndTags := this.cachedTotalTagInfoList.FindByNameOrPinyin([]byte(editInput))
+			this.ReInitTagCombobox(fndTags)
+		}
 	}
 }
 
 
 var hasClicked = false
-
 func (this *MyMainWindow) tagComboboxKeyUp (key walk.Key)  {
 	//如果在 1 秒内再次输入则重置计时器, 再等待 1 s
 	//如果一秒后用户输入则刷新 tag bombobox
 	//timer 只会触发一次
 
 	if nil == this.tagComboboxClocker{
-		this.tagComboboxClocker = time.NewTimer(time.Second * 2)
+		this.tagComboboxClocker = time.NewTimer(time.Second)
 
 	}else{
 
-		this.tagComboboxClocker.Reset(time.Second * 2)
+		this.tagComboboxClocker.Reset(time.Second)
 	}
 
 	if !hasClicked{
@@ -313,9 +368,11 @@ func (this *MyMainWindow) tagComboboxKeyUp (key walk.Key)  {
 
 }
 
-func (this *MyMainWindow) ReInitTagCombobox(inputTagName []byte)  {
+func (this *MyMainWindow) ReInitTagCombobox(tags []dbOptions.TagInfo)  {
 
-	tags := dbOptions.QueryTagNameToIndex(inputTagName)
+	this.tagBombobox.SetHeight(200)
+	this.tagBombobox.SetWidth(40)
+
 	if len(tags) == 0{
 		this.tagBombobox.SetModel([]string{""})
 		return
@@ -327,6 +384,10 @@ func (this *MyMainWindow) ReInitTagCombobox(inputTagName []byte)  {
 	}
 
 	this.tagBombobox.SetModel(model)
+	if 1 == len(tags){
+		this.tagBombobox.SetText(string(tags[0].TagName))
+	}
+	this.tagBombobox.SetFocus()
 }
 
 func (this *MyMainWindow) flushTrainRes()  {
@@ -440,29 +501,32 @@ type MyMainWindow struct {
 	newTagTextEditor  *walk.TextEdit
 
 	trainDBId          uint8
-	waitForStart       chan bool
-	hasStarted         bool
-	waitForDBVisitor   chan bool
+	waitForStart            chan bool
+	hasStarted              bool
+	waitForDBVisitor        chan bool
 
 	//timeOfLastKeyUpOnTagComboBox int64
-	tagComboboxClocker	*time.Timer
-	waitToFlushTagComobobox	 chan bool
+	tagComboboxClocker      *time.Timer
+	waitToFlushTagComobobox chan bool
 
 
-	toDraw             DrawInfo
+	toDraw                  DrawInfo
 
 				       //------------ const
-	wndHeight          int
-	wndWidth           int
-	imgHeight          int
-	imgWidth          int
+	wndHeight               int
+	wndWidth                int
+	imgHeight               int
+	imgWidth                int
 
 				       //------------
 				       //cliked           []Point
-	toDrawAgain      *DrawInfo
-	pickedWhiches    map[uint8]int //键是 picked-which 用来限制同一个 which 只能被选一次
-	pickedTagIndex	 []byte
-	trainResult      *imgCache.MyMap
+	toDrawAgain             *DrawInfo
+	pickedWhiches           map[uint8]int //键是 picked-which 用来限制同一个 which 只能被选一次
+	pickedTagName           []byte
+	trainResult             *imgCache.MyMap
+
+	tagComboboxModel        dbOptions.TagInfoList
+	cachedTotalTagInfoList  dbOptions.TagInfoList
 }
 
 
@@ -503,7 +567,7 @@ func (this *MyMainWindow) onImgClickedEvent(x, y int, button walk.MouseButton)  
 	imgKeyStr := string(ImgIndex.ParseImgKeyToPlainTxt(imgIdent[1:]))
 	imgName := dbIdStr + "_" + imgKeyStr
 
-	//confire
+	//confirm
 	if button == walk.RightButton{
 		if 0 == len(this.pickedWhiches){
 			//this.appendToTextEditor("abort ---- \r\n")
@@ -521,11 +585,26 @@ func (this *MyMainWindow) onImgClickedEvent(x, y int, button walk.MouseButton)  
 			//to save result
 		}
 
-		this.trainResult.Put(imgIdent, &dbOptions.TrainResultItem{Whiches:ans, TagIndex:this.pickedTagIndex})
+		var pickedTagIndex []byte = nil
+		if nil != this.pickedTagName && 0 != len(this.pickedTagName){
+			if nil != this.cachedTotalTagInfoList{
+				tag := this.cachedTotalTagInfoList.MustOnlyOneByName(this.pickedTagName)
+				if tag != nil {
+					pickedTagIndex = tag.TagIndex
+					this.appendToTextEditor("| tag: " + string(this.pickedTagName))
+				}else{
+					walk.MsgBox(this, "Value", "错误: 不存在此 tag: " + string(this.pickedTagName), walk.MsgBoxIconInformation)
+				}
+			}else{
+				walk.MsgBox(this, "Value", "错误: 缓存的 tagNameToId 为空: ", walk.MsgBoxIconInformation)
+			}
+		}
+
+		this.trainResult.Put(imgIdent, &dbOptions.TrainResultItem{Whiches:ans, TagName: fileUtil.CopyBytesTo(this.pickedTagName), TagIndex:pickedTagIndex})
 
 		this.ReInitListBox()
 		this.pickedWhiches = make(map[uint8]int)
-		this.pickedTagIndex = nil
+		this.pickedTagName = nil
 
 		//当有重做的任务正在进行, 需要把当前做完后才做已经缓存起来的任务
 		if this.toDrawAgain == nil{
@@ -743,17 +822,24 @@ func (this *MyMainWindow) ReInitListBox()  {
 
 		whiches := values[0].(*dbOptions.TrainResultItem).Whiches
 
+		tagName := values[0].(*dbOptions.TrainResultItem).TagName
+
+
 		imgName := strconv.Itoa(int(key[0]))+"_"+string(ImgIndex.ParseImgKeyToPlainTxt(key[1:]))
-		whichStr := ""
+		displayStr := ""
 		for _,which := range whiches{
-			whichStr += strconv.Itoa(int(which)) + ","
-		}
-		if len(whichStr) > 0{
-			whichStr = whichStr[:len(whichStr)-1]
+			displayStr += strconv.Itoa(int(which)) + ","
 		}
 
-		dispalyName := imgName + " ----> " + whichStr
-		this.model.items[index] = NameValueItem{name:dispalyName, value:[]byte(whichStr), imgIdent:key, imgData:nil,whiches:whiches}
+
+		if len(displayStr) > 0{
+			displayStr = displayStr[:len(displayStr)-1]
+		}
+
+		displayStr += " | " + string(tagName)
+
+		dispalyName := imgName + " ----> " + displayStr
+		this.model.items[index] = NameValueItem{name:dispalyName, value:[]byte(displayStr), imgIdent:key, imgData:nil,whiches:whiches}
 		index ++
 	}
 
@@ -831,3 +917,30 @@ func GetImgIdentFromImgName(imgName string) []byte {
 
 
 
+
+
+func trimLRSpace(input []byte) []byte {
+	start := 0
+	limit := len(input)
+	for i:=0;i<len(input);i++{
+		if ' ' == input[i]{
+			start = i+1
+		}else{
+			break
+		}
+	}
+
+	for j:=len(input)-1;j >= 0;j --{
+		if ' ' == input[j]{
+			limit = j
+		}else{
+			break
+		}
+	}
+	if start>=len(input){
+		return []byte{}
+	}else if limit <=0 {
+		return []byte{}
+	}
+	return input[start : limit]
+}
