@@ -1,25 +1,29 @@
 
 DirBase=D:/
 
-#2M
-BlockSize.bytes=20971520
+#计算 index 时，设置为：2M，即 20971520
+#使用 index 时，设置为：0.25 M，即 2621440
+BlockSize.bytes=2621440
 
-#128M
-CompactionTableSize.bytes=134217728
+#计算 index 时，设置为：128M，即 134217728
+#使用 index 时，设置为：32 M，即 33554432
+CompactionTableSize.bytes=33554432
 
-#64M
-#leveldb 读时使用的的 block cache
-BlockCacheCapacity.bytes=67108864
+#64M -- 67108864
+#leveldb 读时使用的的 block cache.
+BlockCacheCapacity.bytes=16777216
 
 #320M
 #16 个线程则每个线程 20M, 相当于 160 个 sst 文件
-WriteBuffer.bytes=335544320
+WriteBuffer.bytes=33554432
 
-#L0 到达 160 个文件时触发 compaction
-CompactionL0Trigger.counts=160
+#计算 index 时，设置为: L0 到达 160 个文件时触发 compaction
+#使用 index 时，设置为：L0 到达 4 个文件时触发 compaction
+CompactionL0Trigger.counts=4
 
-#128M
-CompactionTotalSize.bytes=134217728
+#计算 index 时，设置为：128M，即 134217728
+#使用 index 时，设置为：32 M，即 33554432
+CompactionTotalSize.bytes=33554432
 
 #400M
 #L0 层文件总大小达到此阈值则暂停写入, 等待 mem 转化为 imm, 如果有需要 imm 会 compaction
@@ -28,4 +32,4 @@ WriteL0PauseTrigger.bytes=419430400
 
 #320M
 #L0 文件到达此大小减缓写入速度
-WriteL0SlowdownTrigger.bytes=335544320
+WriteL0SlowdownTrigger.bytes=33554432

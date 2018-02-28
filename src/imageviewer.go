@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sort"
 	"time"
+	"imgTrain/src/dialogs"
 )
 
 func main() {
@@ -753,7 +754,7 @@ func (this *MyMainWindow) openAction_Triggered() {
 
 func showAndPickImgDBId() uint8 {
 	recvDbId := make(chan uint8, 1)
-	ShowPickDBDlg(&recvDbId)
+	dialogs.ShowPickDBDlg(&recvDbId)
 	return <- recvDbId
 }
 

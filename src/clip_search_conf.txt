@@ -5,4 +5,4 @@ Delta_sd=5.0
 Delta_mean=5.0
 
 #欧拉距离
-Delta_Eul=5.0
+Delta_Eul_square=25.0
