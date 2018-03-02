@@ -30,7 +30,7 @@ func ShowMarkNotSameTopickDBDlg(imgIdent []byte, markLog *imgCache.MyMap) {
 		widgets = newSameTopickWidgetsFromMarkLog(mw, imgIdent, markLog)
 	}
 
-	fmt.Println("widgets length: ", len(widgets))
+	fmt.Println(string(ImgIndex.ParseImgKeyToPlainTxt(imgIdent[1:])),": widgets length: ", len(widgets))
 
 	if len(widgets) == 0{
 		return
@@ -157,6 +157,7 @@ func newSameTopickWidgetsFromMarkLog(mw *MarkClipNotSameTopicDBDlgWnd, imgIdent 
 func newSameTopickWidgetsFromQuery(mw *MarkClipNotSameTopicDBDlgWnd, imgIdent []byte, cached *imgCache.MyMap) []Widget{
 	sameClips := dbOptions.GetCoordinateClipsFromImgIdent(imgIdent,2)
 	if len(sameClips) == 0{
+		fmt.Println("没有协同关系数据")
 		return nil
 	}
 
