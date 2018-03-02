@@ -10,7 +10,7 @@ import (
 	. "github.com/lxn/walk/declarative"
 
 	"strconv"
-	"dbOptions"
+	"imgSearch/src/dbOptions"
 )
 
 

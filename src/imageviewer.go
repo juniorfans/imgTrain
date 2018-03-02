@@ -15,19 +15,20 @@ import (
 	"io"
 	"bytes"
 	"image/jpeg"
-	"dbOptions"
-	"imgIndex"
+	"imgSearch/src/dbOptions"
+	"imgSearch/src/imgIndex"
 	"strconv"
 	"github.com/BurntSushi/graphics-go/graphics"
 	"image"
-	"config"
+	"imgSearch/src/config"
 	"github.com/lxn/win"
-	"imgCache"
-	"util"
+	"imgSearch/src/util"
 	"strings"
 	"sort"
 	"time"
 	"imgTrain/src/dialogs"
+	"unicode"
+	"imgCache"
 )
 
 func main() {
@@ -51,6 +52,7 @@ func main() {
 	mw.waitToFlushTagComobobox = make(chan bool, 1)
 	mw.tagComboboxClocker = nil
 	mw.reloadTagInfos()
+	mw.markNotSameTopicLog = imgCache.NewMyMap(false)
 
 	go asyncVisitDB(mw)
 
@@ -66,7 +68,7 @@ func windowsCreateAndRun(mw *MyMainWindow){
 
 	if err := (MainWindow{
 		AssignTo: &mw.MainWindow,
-		Title:    "Train Img",
+		Title:    "李志浩图片识别训练器",
 		MenuItems: []MenuItem{
 			Menu{
 				Text: "&Exit",
@@ -120,6 +122,7 @@ func windowsCreateAndRun(mw *MyMainWindow){
 						MinSize:Size{400,60},
 						MaxSize:Size{400,60},
 						Visible:true,
+						Font:Font{PointSize:14},
 						OnMouseUp: func(x, y int, button walk.MouseButton){
 							if !mw.hasStarted{
 								return
@@ -149,6 +152,7 @@ func windowsCreateAndRun(mw *MyMainWindow){
 						MinSize:Size{400,68},
 						MaxSize:Size{400,68},
 						Visible:true,
+						Font:Font{PointSize:14},
 						OnMouseUp: func(x, y int, button walk.MouseButton){
 							if !mw.hasStarted{
 								return
@@ -163,35 +167,12 @@ func windowsCreateAndRun(mw *MyMainWindow){
 			Composite{
 				Layout:VBox{MarginsZero:true},
 				Children: []Widget{
-					Label{
-						MinSize:Size{366,28},
-						MaxSize:Size{366,28},
-						Text: "选择当前图片的主题",
-						Font:Font{PointSize:14},
-					},
-					ComboBox{
-						AssignTo:&mw.tagBombobox,
-						MinSize:Size{366,400},
-						MaxSize:Size{366,400},
-						Font:Font{PointSize:14},
-						Editable: true,
-						OnKeyUp: mw.tagComboboxKeyUp ,
-
-					},
-
-					//占位符 -- 428
-					Label{
-						MinSize:Size{366,180},
-						MaxSize:Size{366,180},
-						Font:Font{PointSize:14},
-
-					},
-
 					PushButton{
 						//AssignTo:&mw.,
 						Text:"确认当前图片主题",
-						MinSize:Size{366,90},
-						MaxSize:Size{366,90},
+						MinSize:Size{366,50},
+						MaxSize:Size{366,50},
+						Font:Font{PointSize:14},
 						Visible:true,
 						OnMouseUp: func(x, y int, button walk.MouseButton){
 							input := mw.tagBombobox.Text()
@@ -202,64 +183,109 @@ func windowsCreateAndRun(mw *MyMainWindow){
 						},
 					},
 
-					Label{
-						MinSize:Size{366,30},
-						MaxSize:Size{366,30},
+					ComboBox{
+						AssignTo:&mw.tagBombobox,
+						MinSize:Size{366,400},
+						MaxSize:Size{366,400},
 						Font:Font{PointSize:14},
-						Text: "录入一个主题--------------------------",
+						Editable: true,
+						OnKeyUp: mw.tagComboboxKeyUp ,
+
 					},
-					//以下 Composite 366 * 40
-					Composite{
-						Layout:HBox{MarginsZero:true},
-						Children: []Widget{
-							TextEdit{
-								AssignTo: &mw.newTagTextEditor,
-								ReadOnly: false,
-								Text:     fmt.Sprintf(""),
-								MinSize:Size{200,40},
-								MaxSize:Size{200,40},	//--80
-								Font:Font{PointSize:14},
-								OnMouseDown:func(x,y int, button walk.MouseButton){
-									//fmt.Println("textedit mouse down: ", int(button))
-								},
-							},
 
-							Label{
-								MinSize:Size{100,40},
-								MaxSize:Size{100,40},
-								Font:Font{PointSize:14},
-								Text: "  --------->  ",
-							},
-							PushButton{
-								//AssignTo:&mw.,
-								Text:"提交",
-								MinSize:Size{66,40},
-								MaxSize:Size{66,40},
-								Visible:true,
-								OnMouseUp: func(x, y int, button walk.MouseButton){
-									inputTagName := mw.newTagTextEditor.Text()
-									if 0 == len(inputTagName){
-										return
-									}
-									if nil != mw.cachedTotalTagInfoList {
-										if mw.cachedTotalTagInfoList.IsTagExsits([]byte(inputTagName)){
-											walk.MsgBox(mw, "Value", "tag 已存在: " + inputTagName, walk.MsgBoxIconInformation)
-											return
-										}
-									}
-
-									err := dbOptions.WriteATag([]byte(inputTagName))
-									if nil != err{
-										walk.MsgBox(mw, "Value", "写入 tag 错误: " + err.Error(), walk.MsgBoxIconInformation)
-									}else{
-										walk.MsgBox(mw, "Value", "写入 tag 成功: " + inputTagName, walk.MsgBoxIconInformation)
-										mw.reloadTagInfos()
-										mw.ReInitTagCombobox(mw.cachedTotalTagInfoList)
-									}
-								},
-							},
+					Label{
+						MinSize:Size{366,20},
+						MaxSize:Size{366,20},
+						Font:Font{PointSize:14},
+						Text: "---------------------------------------",
+					},
+					//以上 470
+					PushButton{
+						//AssignTo:&mw.,
+						Text:"标记协同关系非主题相似",
+						MinSize:Size{366,50},
+						MaxSize:Size{366,50},
+						Font:Font{PointSize:14},
+						Visible:true,
+						OnMouseUp: func(x, y int, button walk.MouseButton){
+							if len(mw.markNotSameIdent) == 0{
+								return
+							}
+							dialogs.ShowMarkNotSameTopickDBDlg(mw.markNotSameIdent, mw.markNotSameTopicLog)
 						},
 					},
+
+
+					TextEdit{
+						AssignTo: &mw.adviserText,
+						ReadOnly: true,
+						Text:     fmt.Sprintf(""),
+						MinSize:Size{366,100},
+						MaxSize:Size{366,100},
+						Font:Font{PointSize:14},
+						OnMouseDown:func(x,y int, button walk.MouseButton){
+
+						},
+					},
+
+					Label{
+						MinSize:Size{366,20},
+						MaxSize:Size{366,20},
+						Font:Font{PointSize:14},
+						Text: "---------------------------------------",
+					},
+
+					//以上 640
+					//以下 100
+					PushButton{
+						Text:"新加入一个标签",
+						MinSize:Size{366,50},
+						MaxSize:Size{366,50},
+						Visible:true,
+						Font:Font{PointSize:14},
+						OnMouseUp: func(x, y int, button walk.MouseButton){
+							inputTagName := mw.newTagTextEditor.Text()
+							inputTagName = myStringTrim(inputTagName)
+							fmt.Println(inputTagName)
+
+							if 0 == len(inputTagName){
+								return
+							}
+							if nil != mw.cachedTotalTagInfoList {
+								if mw.cachedTotalTagInfoList.IsTagExsits([]byte(inputTagName)){
+									walk.MsgBox(mw, "Value", "tag 已存在: " + inputTagName, walk.MsgBoxIconInformation)
+									return
+								}
+							}
+
+							err := dbOptions.WriteATag([]byte(inputTagName))
+							if nil != err{
+								walk.MsgBox(mw, "Value", "写入 tag 错误: " + err.Error(), walk.MsgBoxIconInformation)
+							}else{
+								//	walk.MsgBox(mw, "Value", "写入 tag 成功: " + inputTagName, walk.MsgBoxIconInformation)
+								mw.reloadTagInfos()
+								mw.ReInitTagCombobox(mw.cachedTotalTagInfoList)
+
+								mw.tagBombobox.SetText(string(inputTagName))
+
+								mw.newTagTextEditor.SetText("")
+							}
+						},
+					},
+
+
+					TextEdit{
+						AssignTo: &mw.newTagTextEditor,
+						ReadOnly: false,
+						Text:     fmt.Sprintf(""),
+						MinSize:Size{366,50},
+						MaxSize:Size{366,50},
+						Font:Font{PointSize:14},
+						OnMouseDown:func(x,y int, button walk.MouseButton){
+
+						},
+					},
+
 				},
 			},
 
@@ -267,10 +293,11 @@ func windowsCreateAndRun(mw *MyMainWindow){
 				Layout:VBox{MarginsZero:true},
 				Children: []Widget{
 					PushButton{
-						//AssignTo:&mw.,
+						AssignTo:&mw.skipCurrentButton,
 						Text:"Skip",
-						MinSize:Size{600,58},
-						MaxSize:Size{600,58},
+						MinSize:Size{600,50},
+						MaxSize:Size{600,50},
+						Font:Font{PointSize:14},
 						Visible:true,
 						OnMouseUp: func(x, y int, button walk.MouseButton){
 							if !mw.hasStarted{
@@ -285,8 +312,8 @@ func windowsCreateAndRun(mw *MyMainWindow){
 					},
 					ImageView{
 						AssignTo: &mw.imageViewer,
-						MinSize:Size{600, 610},
-						MaxSize:Size{600, 610},
+						MinSize:Size{600, 600},
+						MaxSize:Size{600, 600},
 						AlwaysConsumeSpace:true,
 
 					},
@@ -296,8 +323,8 @@ func windowsCreateAndRun(mw *MyMainWindow){
 						Text:     fmt.Sprintf(""),
 						HScroll: 	true,
 						VScroll: true,
-						MinSize:Size{600,100},
-						MaxSize:Size{600,100},
+						MinSize:Size{600,120},	//因为图片600 高度实际上不用使用 600, 此处可以略高, 以撑开所有像素
+						MaxSize:Size{600,120},
 						Font:Font{PointSize:14},
 						OnMouseDown:func(x,y int, button walk.MouseButton){
 							//fmt.Println("textedit mouse down: ", int(button))
@@ -473,6 +500,9 @@ func (this *MyMainWindow) TrainAgain()  {
 
 	drawImage(this.imageViewer, this.imgWidth, this.imgHeight, imgData, imgName)
 
+	this.putTrainData(this.toDrawAgain)
+	this.markNotSameIdent = this.toDrawAgain.imgIdent
+	this.skipCurrentButton.SetText("跳过当前: " + imgName)
 	this.appendToTextEditor("\r\n----------------------------\r\n")
 	this.appendToTextEditor("confirming: [" + imgName + "]: ")
 }
@@ -488,20 +518,27 @@ type DrawInfo struct {
 
 type MyMainWindow struct {
 	*walk.MainWindow
-	imageViewer        *walk.ImageView
-	tagInputTextEditor *walk.TextEdit
-	dispalyTextEditor  *walk.TextEdit
-	listBox            *walk.ListBox
-	imgPreViewer       *walk.CustomWidget
-	model              *NameValueModel
+	imageViewer             *walk.ImageView
+	tagInputTextEditor      *walk.TextEdit
+	dispalyTextEditor       *walk.TextEdit
+	listBox                 *walk.ListBox
+	imgPreViewer            *walk.CustomWidget
+	model                   *NameValueModel
 				       //	listTestEditor  *walk.TextEdit
-	doAgainButton      *walk.PushButton
-	flushAllButton     *walk.PushButton
+	doAgainButton           *walk.PushButton
+	flushAllButton          *walk.PushButton
 
-	tagBombobox	*walk.ComboBox
-	newTagTextEditor  *walk.TextEdit
+	markNotSameIdent	[]byte
+	markNotSameTopicLog     *imgCache.MyMap
 
-	trainDBId          uint8
+	skipCurrentButton       *walk.PushButton
+
+	adviserText             *walk.TextEdit
+
+	tagBombobox             *walk.ComboBox
+	newTagTextEditor        *walk.TextEdit
+
+	trainDBId               uint8
 	waitForStart            chan bool
 	hasStarted              bool
 	waitForDBVisitor        chan bool
@@ -708,9 +745,25 @@ func (this *MyMainWindow) drawInMainThread()  {
 
 	drawImage(this.imageViewer, this.imgWidth, this.imgHeight, drawInfo.imgData, imgName)
 
+	this.putTrainData(&drawInfo)
+
+	this.markNotSameIdent = drawInfo.imgIdent
+
+	this.skipCurrentButton.SetText("跳过当前: " + imgName)
 	this.appendToTextEditor("\r\n----------------------------\r\n")
 	this.appendToTextEditor("confirming: [" + imgName + "]: ")
 }
+
+
+
+
+func (this *MyMainWindow) putTrainData(drawInfo *DrawInfo)  {
+	//投放建议内容
+	recoginitionRes := dbOptions.ImgRecognitionByImgIdent(drawInfo.imgIdent)
+
+	this.adviserText.SetText(recoginitionRes.ToString())
+}
+
 
 func drawImage(imgViewer * walk.ImageView, width, height int, imgData []byte, title string) error {
 	var reader io.Reader = bytes.NewReader(imgData)
@@ -859,6 +912,8 @@ func (this *MyMainWindow) ReInitListBox()  {
 	this.imgPreViewer.SetEnabled(true)
 }
 
+
+
 type NameValueItem struct {
 	name     string  //用于展示
 	value    []byte
@@ -944,4 +999,33 @@ func trimLRSpace(input []byte) []byte {
 		return []byte{}
 	}
 	return input[start : limit]
+}
+
+func myStringTrim(input string) string {
+
+	pre := 0
+	us := []rune(input)
+	for _,u := range us{
+		if !unicode.IsSpace(u){
+			break
+		}
+		pre ++
+	}
+
+	suf := len(us) -1
+	for i:=suf;i != -1;i --{
+		if !unicode.IsSpace(us[i]){
+			break
+		}
+		suf --
+	}
+
+	//pre 是第一个非空格的位置, suf 是倒数第一个非空格的位置
+	if suf +1 > pre{
+		res := us[pre:suf+1]
+		return string(res)
+	}else{
+		return ""
+	}
+
 }
