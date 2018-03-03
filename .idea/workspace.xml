@@ -25,7 +25,7 @@
         <entry file="file://$PROJECT_DIR$/../imgSearch/src/dbOptions/ClipCoordinateOptions.go">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="328">
-              <caret line="739" column="21" lean-forward="true" selection-start-line="739" selection-start-column="21" selection-end-line="739" selection-end-column="21" />
+              <caret line="745" column="21" lean-forward="true" selection-start-line="745" selection-start-column="21" selection-end-line="745" selection-end-column="21" />
               <folding />
             </state>
           </provider>
@@ -70,8 +70,8 @@
       <file leaf-file-name="ImgStat.go" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/../imgSearch/src/ImgStat.go">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="385">
-              <caret line="147" column="0" lean-forward="true" selection-start-line="147" selection-start-column="0" selection-end-line="147" selection-end-column="0" />
+            <state relative-caret-position="290">
+              <caret line="142" column="54" lean-forward="true" selection-start-line="142" selection-start-column="54" selection-end-line="142" selection-end-column="54" />
               <folding />
             </state>
           </provider>
@@ -902,12 +902,12 @@
       <workItem from="1518338041594" duration="1342000" />
       <workItem from="1519805369897" duration="294000" />
       <workItem from="1519805992690" duration="10498000" />
-      <workItem from="1519880003366" duration="29909000" />
+      <workItem from="1519880003366" duration="31154000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="168462000" />
+    <option name="totallyTimeSpent" value="169707000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
@@ -1331,15 +1331,15 @@
     <entry file="file://$PROJECT_DIR$/../imgSearch/src/dbOptions/ClipCoordinateOptions.go">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="328">
-          <caret line="739" column="21" lean-forward="true" selection-start-line="739" selection-start-column="21" selection-end-line="739" selection-end-column="21" />
+          <caret line="745" column="21" lean-forward="true" selection-start-line="745" selection-start-column="21" selection-end-line="745" selection-end-column="21" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/../imgSearch/src/ImgStat.go">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="385">
-          <caret line="147" column="0" lean-forward="true" selection-start-line="147" selection-start-column="0" selection-end-line="147" selection-end-column="0" />
+        <state relative-caret-position="290">
+          <caret line="142" column="54" lean-forward="true" selection-start-line="142" selection-start-column="54" selection-end-line="142" selection-end-column="54" />
           <folding />
         </state>
       </provider>
